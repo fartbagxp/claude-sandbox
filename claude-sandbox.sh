@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/config.sh"
+source "${SCRIPT_DIR}/config/config.sh"
 
 usage() {
     echo "Usage: claude-sandbox {start|stop|status|ssh}"
@@ -46,7 +46,7 @@ cmd_ssh() {
 }
 
 # --- Infrastructure ---
-setup_runtime_dir() { mkdir -p "$RUNTIME_DIR"; }
+setup_runtime_dir() { mkdir -p "$RUNTIME_DIR" "$BUILD_DIR"; }
 
 # --- Networking ---
 setup_networking() {
