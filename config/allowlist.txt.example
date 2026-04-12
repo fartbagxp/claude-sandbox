@@ -1,0 +1,36 @@
+# Hostname allowlist for claude-sandbox egress filtering.
+# One hostname per line. Lines starting with # are comments. Blank lines ignored.
+# Copy this file to allowlist.txt and customize:
+#   cp config/allowlist.txt.example config/allowlist.txt
+
+# Anthropic
+api.anthropic.com
+a-api.anthropic.com
+claude.ai
+claude.com
+docs.claude.com
+platform.claude.com
+www.anthropic.com
+
+# GitHub
+api.github.com
+cli.github.com
+docs.github.com
+gist.github.com
+gist.githubusercontent.com
+github.com
+raw.githubusercontent.com
+
+# Package registries
+pypi.org
+registry.npmjs.org
+www.npmjs.com
+yarnpkg.com
+
+# Documentation
+developer.mozilla.org
+docs.python.org
+nodejs.org
+react.dev
+www.typescriptlang.org
+stackoverflow.com
