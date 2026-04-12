@@ -24,14 +24,21 @@ sudo dnf install dnsmasq jq nftables libguestfs-tools-c
 
 ## Setup
 
-1. Build the guest rootfs (Debian 13 Trixie):
+1. Copy and customize the allowlist:
+
+```bash
+cp config/allowlist.txt.example config/allowlist.txt
+# Edit config/allowlist.txt to add/remove allowed hosts
+```
+
+2. Build the guest rootfs (Debian 13 Trixie):
 
 ```bash
 ./build-rootfs.sh
 ```
 
-2. Download a kernel binary from the cloud-hypervisor releases and place it at
-   `~/.claude-sandbox/vmlinux`.
+3. Download a kernel binary from the cloud-hypervisor releases and place it at
+   `build/vmlinux`.
 
 ## Usage
 
@@ -51,9 +58,9 @@ sudo ./claude-sandbox.sh stop
 
 ## Egress Allowlist
 
-The hostname allowlist is read from `~/.claude/settings.json` (the `sandbox.network.allowedHosts` array). To update:
+The hostname allowlist is read from `config/allowlist.txt` (one hostname per line, `#` comments supported). To update:
 
-1. Edit `~/.claude/settings.json` and add/remove hosts
+1. Edit `config/allowlist.txt` and add/remove hosts
 2. Restart the sandbox (`stop` then `start`)
 
 ## Architecture
