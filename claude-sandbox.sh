@@ -120,14 +120,15 @@ teardown_nftables() {
 
 # --- dnsmasq ---
 generate_dnsmasq_nftset_conf() {
-    echo "  Generating dnsmasq nftset config from ${CLAUDE_SETTINGS}..."
-    if [ ! -f "$CLAUDE_SETTINGS" ]; then
-        echo "ERROR: Claude settings not found at ${CLAUDE_SETTINGS}" >&2
+    echo "  Generating dnsmasq nftset config from ${ALLOWLIST_FILE}..."
+    if [ ! -f "$ALLOWLIST_FILE" ]; then
+        echo "ERROR: Allowlist not found at ${ALLOWLIST_FILE}" >&2
+        echo "  Copy the example: cp config/allowlist.txt.example config/allowlist.txt" >&2
         exit 1
     fi
 
-    jq -r '.sandbox.network.allowedHosts[]
-        | select(startswith("_comment") | not)' "$CLAUDE_SETTINGS" \
+    # Strip comments and blank lines, generate dnsmasq nftset directives
+    grep -v '^\s*#' "$ALLOWLIST_FILE" | grep -v '^\s*$' \
         | while read -r host; do
             echo "nftset=/${host}/4#inet#claude_filter#allowed_ips"
         done > "$DNSMASQ_NFTSET_CONF"
