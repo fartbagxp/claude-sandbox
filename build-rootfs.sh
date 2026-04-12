@@ -2,10 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/config.sh"
+source "${SCRIPT_DIR}/config/config.sh"
 
 echo "Building Claude sandbox guest rootfs..."
-mkdir -p "$SANDBOX_DIR"
+mkdir -p "$BUILD_DIR"
 
 ROOTFS_SIZE="20G"
 
