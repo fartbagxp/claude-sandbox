@@ -19,7 +19,7 @@ sudo dnf install virtiofsd
 sudo ln -s /usr/libexec/virtiofsd /usr/local/bin/virtiofsd
 
 # System packages
-sudo dnf install dnsmasq jq nftables libguestfs-tools-c
+sudo dnf install dnsmasq nftables libguestfs-tools-c
 ```
 
 ## Setup
@@ -37,8 +37,8 @@ cp config/allowlist.txt.example config/allowlist.txt
 ./build-rootfs.sh
 ```
 
-3. Download a kernel binary from the cloud-hypervisor releases and place it at
-   `build/vmlinux`.
+The kernel and initramfs are extracted automatically from the guest rootfs by
+`build-rootfs.sh` into `build/vmlinux` and `build/initrd.img`.
 
 ## Usage
 
