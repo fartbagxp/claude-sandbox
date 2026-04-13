@@ -40,6 +40,9 @@ VIRTIOFS_MOUNTS=(
 # --- Allowlist ---
 ALLOWLIST_FILE="${REPO_ROOT}/config/allowlist.txt"
 
+# --- Packages ---
+PACKAGES_FILE="${REPO_ROOT}/config/packages.txt"
+
 # --- Sockets (derived, do not edit) ---
 CH_API_SOCKET="${RUNTIME_DIR}/ch-api.sock"
 DNSMASQ_PIDFILE="${RUNTIME_DIR}/dnsmasq.pid"

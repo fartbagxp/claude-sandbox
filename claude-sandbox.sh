@@ -42,7 +42,7 @@ cmd_status() {
 }
 
 cmd_ssh() {
-    exec ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "claude@${GUEST_IP}"
+    exec ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${REAL_USER}@${GUEST_IP}"
 }
 
 # --- Infrastructure ---
@@ -272,7 +272,7 @@ wait_for_ssh() {
     echo "  Waiting for SSH to become available..."
     local retries=0
     while ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-              -o ConnectTimeout=1 "claude@${GUEST_IP}" true 2>/dev/null; do
+              -o ConnectTimeout=1 "${REAL_USER}@${GUEST_IP}" true 2>/dev/null; do
         retries=$((retries + 1))
         if [ $retries -ge 60 ]; then
             echo "ERROR: SSH not available after 60s" >&2

@@ -4,5 +4,6 @@ build/
 # Runtime state (created by claude-sandbox.sh)
 run/
 
-# User-specific allowlist (copy from allowlist.txt.example)
+# User-specific config (copy from *.example files)
 config/allowlist.txt
+config/packages.txt
