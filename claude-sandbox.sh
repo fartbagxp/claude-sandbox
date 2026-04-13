@@ -75,35 +75,49 @@ teardown_networking() {
 setup_nftables() {
     echo "  Setting up nftables egress rules..."
 
-    # Use a dedicated table so we don't touch the system firewall
-    sudo nft add table inet claude_filter
+    # Clean slate — idempotent on re-run
+    teardown_nftables
 
-    # Dynamic IP set populated by dnsmasq
-    sudo nft add set inet claude_filter allowed_ips '{ type ipv4_addr ; flags timeout ; }'
+    # Atomic ruleset load. policy accept ensures non-sandbox forwarding
+    # (Docker, libvirt, VPNs) is unaffected. Only TAP traffic is filtered.
+    sudo nft -f - <<EOF
+table inet claude_filter {
+    set allowed_ips {
+        type ipv4_addr
+        flags timeout
+    }
 
-    # INPUT chain: allow guest → host DNS (locally-delivered, not forwarded)
-    sudo nft add chain inet claude_filter input '{ type filter hook input priority 0 ; policy accept ; }'
-    sudo nft add rule inet claude_filter input iifname "$TAP_DEV" ip daddr "$HOST_IP" udp dport 53 accept
-    sudo nft add rule inet claude_filter input iifname "$TAP_DEV" ip daddr "$HOST_IP" tcp dport 53 accept
+    chain input {
+        type filter hook input priority 0; policy accept;
+        iifname "$TAP_DEV" ip daddr "$HOST_IP" udp dport 53 accept
+        iifname "$TAP_DEV" ip daddr "$HOST_IP" tcp dport 53 accept
+    }
 
-    # FORWARD chain: default drop
-    sudo nft add chain inet claude_filter forward '{ type filter hook forward priority 0 ; policy drop ; }'
+    chain forward {
+        type filter hook forward priority 0; policy accept;
 
-    # Rule 2: Allow traffic to resolved allowlisted IPs
-    sudo nft add rule inet claude_filter forward iifname "$TAP_DEV" ip daddr @allowed_ips accept
+        # Allow traffic to DNS-resolved allowlisted IPs
+        iifname "$TAP_DEV" ip daddr @allowed_ips accept
 
-    # Rule 3: Allow return traffic for established connections
-    sudo nft add rule inet claude_filter forward oifname "$TAP_DEV" ct state established,related accept
+        # Allow return traffic for established connections
+        oifname "$TAP_DEV" ct state established,related accept
 
-    # Rule 4: Reject everything else (fast failure, no agent stalls)
-    sudo nft add rule inet claude_filter forward iifname "$TAP_DEV" counter reject
+        # Reject all other sandbox traffic (fast failure, no agent stalls)
+        iifname "$TAP_DEV" counter reject
+    }
 
-    # NAT: masquerade outbound traffic from the VM
-    sudo nft add chain inet claude_filter postrouting '{ type nat hook postrouting priority 100 ; }'
-    sudo nft add rule inet claude_filter postrouting ip saddr "$SUBNET_CIDR" oifname != "$TAP_DEV" masquerade
+    chain postrouting {
+        type nat hook postrouting priority 100;
+        ip saddr $SUBNET_CIDR oifname != "$TAP_DEV" masquerade
+    }
+}
+EOF
 
     # Docker uses legacy iptables with a DROP policy on FORWARD.
-    # Insert rules so traffic from/to the TAP device isn't killed.
+    # These rules ensure sandbox traffic isn't killed by Docker's iptables
+    # before reaching our nftables rules. They are safe because our nftables
+    # chain above is the actual security boundary — these just pass traffic
+    # through to it.
     echo "  Adding iptables rules for Docker coexistence..."
     sudo iptables -I FORWARD -i "$TAP_DEV" -j ACCEPT
     sudo iptables -I FORWARD -o "$TAP_DEV" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
