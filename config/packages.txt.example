@@ -1,0 +1,22 @@
+# Packages to install in the sandbox guest image.
+# One package per line. Lines starting with # are comments. Blank lines ignored.
+# Copy this file to packages.txt and customize:
+#   cp config/packages.txt.example config/packages.txt
+
+[apt]
+openssh-server
+sudo
+nodejs
+npm
+python3
+python3-pip
+git
+make
+g++
+curl
+wget
+
+[npm]
+@anthropic-ai/claude-code
+
+[pip]

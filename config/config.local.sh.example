@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Local config overrides (not committed to git).
+# Copy to config.local.sh and customize.
+#
+# Mounts added here require a rootfs rebuild to appear in guest fstab.
+
+# Append additional virtiofs mounts
+# Format: "tag:host_path:guest_path:mode" where mode is "rw" or "ro"
+VIRTIOFS_MOUNTS+=(
+    # "my-mount:$REAL_HOME/some/path:/guest/path:ro"
+)
