@@ -195,7 +195,7 @@ start_virtiofsd() {
     echo "  Starting virtiofsd instances..."
 
     for mount_spec in "${VIRTIOFS_MOUNTS[@]}"; do
-        IFS=':' read -r tag host_path mode <<< "$mount_spec"
+        IFS=':' read -r tag host_path _guest_path mode <<< "$mount_spec"
         local socket_path="${RUNTIME_DIR}/virtiofs-${tag}.sock"
         local pidfile="${RUNTIME_DIR}/virtiofs-${tag}.pid"
 
@@ -242,7 +242,7 @@ start_vm() {
     # --fs takes multiple space-separated values after a single flag
     local fs_args=(--fs)
     for mount_spec in "${VIRTIOFS_MOUNTS[@]}"; do
-        IFS=':' read -r tag host_path mode <<< "$mount_spec"
+        IFS=':' read -r tag host_path _guest_path mode <<< "$mount_spec"
         local socket_path="${RUNTIME_DIR}/virtiofs-${tag}.sock"
         fs_args+=("tag=${tag},socket=${socket_path},num_queues=1,queue_size=512")
     done

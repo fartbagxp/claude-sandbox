@@ -7,3 +7,4 @@ run/
 # User-specific config (copy from *.example files)
 config/allowlist.txt
 config/packages.txt
+config/config.local.sh

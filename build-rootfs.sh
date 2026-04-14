@@ -7,8 +7,6 @@ source "${SCRIPT_DIR}/config/config.sh"
 echo "Building Claude sandbox guest rootfs..."
 mkdir -p "$BUILD_DIR"
 
-ROOTFS_SIZE="20G"
-
 # --- Read package lists from config/packages.txt ---
 if [ ! -f "$PACKAGES_FILE" ]; then
     echo "ERROR: Packages file not found at ${PACKAGES_FILE}" >&2
@@ -24,7 +22,7 @@ pip_packages=()
 while IFS= read -r line; do
     # Strip comments and whitespace
     line="${line%%#*}"
-    line="${line// /}"
+    line="${line//[[:space:]]/}"
     [[ -z "$line" ]] && continue
     case "$line" in
         "[apt]") current_section="apt"; continue ;;
@@ -56,6 +54,9 @@ VB_ARGS=(
     --size "$ROOTFS_SIZE"
     --root-password password:sandbox
 )
+
+# Add GitHub CLI apt repository
+VB_ARGS+=(--run-command 'mkdir -p -m 755 /etc/apt/keyrings && wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list')
 
 # Install apt packages
 if [ ${#apt_packages[@]} -gt 0 ]; then
@@ -94,7 +95,7 @@ VB_ARGS+=(
     --hostname claude-sandbox
     --run-command 'apt-get purge -y dhcpcd-base dhcpcd-common || true'
     --run-command 'systemctl enable systemd-networkd'
-    --run-command 'mkdir -p /workspace /etc/claude'
+    --run-command "mkdir -p $(printf '%s ' "${VIRTIOFS_MOUNTS[@]}" | awk -F: '{printf "%s ", $3}')"
 )
 
 # --write args with embedded newlines must be appended individually
@@ -108,9 +109,16 @@ DNS=${HOST_IP}
 "
 VB_ARGS+=(--write "/etc/systemd/network/10-eth0.network:${NETWORK_CFG}")
 
-FSTAB_CFG="workspace /workspace virtiofs defaults,nofail 0 0
-claude-config /etc/claude virtiofs ro,nofail 0 0
+# Generate fstab from VIRTIOFS_MOUNTS (single source of truth)
+FSTAB_CFG="/dev/vda1 / ext4 defaults 0 1
 "
+for mount_spec in "${VIRTIOFS_MOUNTS[@]}"; do
+    IFS=':' read -r tag host_path guest_path mode <<< "$mount_spec"
+    local_opts="defaults,nofail"
+    [ "$mode" = "ro" ] && local_opts="ro,nofail"
+    FSTAB_CFG+="${tag} ${guest_path} virtiofs ${local_opts} 0 0
+"
+done
 VB_ARGS+=(--write "/etc/fstab:${FSTAB_CFG}")
 
 # resolv.conf MUST be set via --write, not --run-command.
