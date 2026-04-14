@@ -167,6 +167,9 @@ conf-file=${DNSMASQ_NFTSET_CONF}
 # Don't read /etc/hosts or system resolv.conf
 no-hosts
 
+# Reduce CDN IP rotation issues (IPs stay in nftset for at least 5 min)
+min-cache-ttl=300
+
 # Logging (optional, disable for production)
 log-queries
 log-facility=${RUNTIME_DIR}/dnsmasq.log
@@ -175,10 +178,8 @@ EOF
     echo "  Starting dnsmasq..."
     sudo dnsmasq \
         --conf-file="$DNSMASQ_CONF" \
-        --pid-file="$DNSMASQ_PIDFILE" \
-        --keep-in-foreground &
-    DNSMASQ_PID=$!
-    echo "  dnsmasq started (PID: ${DNSMASQ_PID})."
+        --pid-file="$DNSMASQ_PIDFILE"
+    echo "  dnsmasq started (PID: $(cat "$DNSMASQ_PIDFILE"))."
 }
 
 stop_dnsmasq() {
@@ -187,18 +188,16 @@ stop_dnsmasq() {
         sudo kill "$(cat "$DNSMASQ_PIDFILE")" 2>/dev/null || true
         rm -f "$DNSMASQ_PIDFILE"
     fi
-    # Also kill any backgrounded dnsmasq from this session
-    kill "${DNSMASQ_PID:-0}" 2>/dev/null || true
 }
 
 # --- virtiofsd ---
 start_virtiofsd() {
     echo "  Starting virtiofsd instances..."
-    VIRTIOFSD_PIDS=()
 
     for mount_spec in "${VIRTIOFS_MOUNTS[@]}"; do
         IFS=':' read -r tag host_path mode <<< "$mount_spec"
         local socket_path="${RUNTIME_DIR}/virtiofs-${tag}.sock"
+        local pidfile="${RUNTIME_DIR}/virtiofs-${tag}.pid"
 
         local args=(
             --socket-path="$socket_path"
@@ -209,9 +208,9 @@ start_virtiofsd() {
             args+=(--readonly)
         fi
 
-        echo "    ${tag}: ${host_path} (${mode}) → ${socket_path}"
+        echo "    ${tag}: ${host_path} (${mode}) -> ${socket_path}"
         "$VIRTIOFSD_BINARY" "${args[@]}" &
-        VIRTIOFSD_PIDS+=($!)
+        echo "$!" > "$pidfile"
 
         # Wait for socket to appear (virtiofsd creates it on startup)
         local retries=0
@@ -228,8 +227,10 @@ start_virtiofsd() {
 
 stop_virtiofsd() {
     echo "  Stopping virtiofsd instances..."
-    for pid in "${VIRTIOFSD_PIDS[@]:-}"; do
-        kill "$pid" 2>/dev/null || true
+    for pidfile in "${RUNTIME_DIR}"/virtiofs-*.pid; do
+        [ -f "$pidfile" ] || continue
+        kill "$(cat "$pidfile")" 2>/dev/null || true
+        rm -f "$pidfile"
     done
     rm -f "${RUNTIME_DIR}"/virtiofs-*.sock
 }
@@ -259,27 +260,37 @@ start_vm() {
         "${fs_args[@]}" \
         --api-socket "$CH_API_SOCKET" \
         --seccomp true &
-    CH_PID=$!
+    echo "$!" > "$CH_PIDFILE"
 
-    echo "  cloud-hypervisor started (PID: ${CH_PID})."
+    echo "  cloud-hypervisor started (PID: $(cat "$CH_PIDFILE"))."
 }
 
 stop_vm() {
     echo "  Shutting down VM..."
+
+    local ch_pid=""
+    if [ -f "$CH_PIDFILE" ]; then
+        ch_pid=$(cat "$CH_PIDFILE")
+    fi
+
+    # Try graceful shutdown via API socket first
     if [ -S "$CH_API_SOCKET" ]; then
         sudo curl --unix-socket "$CH_API_SOCKET" -s \
             -X PUT "http://localhost/api/v1/vm.shutdown" 2>/dev/null || true
         local retries=0
-        while kill -0 "${CH_PID:-0}" 2>/dev/null && [ $retries -lt 50 ]; do
+        while [ -n "$ch_pid" ] && kill -0 "$ch_pid" 2>/dev/null && [ $retries -lt 50 ]; do
             sleep 0.1
             retries=$((retries + 1))
         done
     fi
-    if kill -0 "${CH_PID:-0}" 2>/dev/null; then
+
+    # Force kill if still running
+    if [ -n "$ch_pid" ] && kill -0 "$ch_pid" 2>/dev/null; then
         echo "  Force killing VM..."
-        sudo kill "$CH_PID" 2>/dev/null || true
+        sudo kill "$ch_pid" 2>/dev/null || true
     fi
-    rm -f "$CH_API_SOCKET"
+
+    rm -f "$CH_API_SOCKET" "$CH_PIDFILE"
 }
 
 wait_for_ssh() {
@@ -298,7 +309,7 @@ wait_for_ssh() {
 }
 
 vm_is_running() {
-    [ -n "${CH_PID:-}" ] && kill -0 "$CH_PID" 2>/dev/null
+    [ -f "$CH_PIDFILE" ] && kill -0 "$(cat "$CH_PIDFILE")" 2>/dev/null
 }
 
 case "${1:-}" in
