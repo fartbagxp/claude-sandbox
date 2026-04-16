@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/config/config.sh"
 
 usage() {
-    echo "Usage: claude-sandbox {start|stop|status|ssh}"
+    echo "Usage: claude-sandbox {start|stop|status|ssh|reload-allowlist}"
     exit 1
 }
 
@@ -312,10 +312,35 @@ vm_is_running() {
     [ -f "$CH_PIDFILE" ] && kill -0 "$(cat "$CH_PIDFILE")" 2>/dev/null
 }
 
+cmd_reload_allowlist() {
+    if [ ! -f "$DNSMASQ_PIDFILE" ] || ! sudo kill -0 "$(cat "$DNSMASQ_PIDFILE")" 2>/dev/null; then
+        echo "ERROR: dnsmasq is not running. Start the sandbox first." >&2
+        exit 1
+    fi
+
+    echo "Reloading allowlist..."
+
+    # Regenerate nftset config from the (possibly updated) allowlist
+    generate_dnsmasq_nftset_conf
+
+    # Flush cached IPs so removed hostnames lose access immediately
+    echo "  Flushing nftables allowed_ips set..."
+    sudo nft flush set inet claude_filter allowed_ips
+
+    # SIGHUP tells dnsmasq to re-read its config files (including nftset conf)
+    # and clear its DNS cache, which forces fresh lookups that re-populate
+    # the nftset for hostnames still on the allowlist.
+    echo "  Sending SIGHUP to dnsmasq (PID: $(cat "$DNSMASQ_PIDFILE"))..."
+    sudo kill -HUP "$(cat "$DNSMASQ_PIDFILE")"
+
+    echo "Allowlist reloaded. New DNS queries will repopulate the firewall rules."
+}
+
 case "${1:-}" in
-    start)  cmd_start ;;
-    stop)   cmd_stop ;;
-    status) cmd_status ;;
-    ssh)    cmd_ssh ;;
-    *)      usage ;;
+    start)            cmd_start ;;
+    stop)             cmd_stop ;;
+    status)           cmd_status ;;
+    ssh)              cmd_ssh ;;
+    reload-allowlist) cmd_reload_allowlist ;;
+    *)                usage ;;
 esac
