@@ -41,8 +41,14 @@ cmd_status() {
     echo -n "Allowed IPs: "; nft list set inet claude_filter allowed_ips 2>/dev/null | grep -c "elements" || echo "0"
 }
 
+SSH_KEY_ARGS=()
+for _key in "${REAL_HOME}/.ssh/id_ed25519" "${REAL_HOME}/.ssh/id_rsa"; do
+    [[ -f "$_key" ]] && SSH_KEY_ARGS+=(-i "$_key")
+done
+
 cmd_ssh() {
-    exec ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${REAL_USER}@${GUEST_IP}"
+    exec ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "${SSH_KEY_ARGS[@]}" "${REAL_USER}@${GUEST_IP}"
 }
 
 # --- Infrastructure ---
@@ -61,6 +67,13 @@ setup_networking() {
 
     # Enable IP forwarding (required for NAT)
     sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null
+
+    # firewalld (if active) drops packets on interfaces not assigned to a zone,
+    # which blocks VM→host DNS before our nftables INPUT rules can accept it.
+    if systemctl is-active --quiet firewalld 2>/dev/null; then
+        echo "  firewalld detected: adding ${TAP_DEV} to trusted zone..."
+        sudo firewall-cmd --zone=trusted --add-interface="$TAP_DEV"
+    fi
 }
 
 teardown_networking() {
@@ -68,6 +81,9 @@ teardown_networking() {
     if ip link show "$TAP_DEV" &>/dev/null; then
         sudo ip link set "$TAP_DEV" down
         sudo ip tuntap del dev "$TAP_DEV" mode tap
+    fi
+    if systemctl is-active --quiet firewalld 2>/dev/null; then
+        sudo firewall-cmd --zone=trusted --remove-interface="$TAP_DEV" 2>/dev/null || true
     fi
 }
 
@@ -297,7 +313,7 @@ wait_for_ssh() {
     echo "  Waiting for SSH to become available..."
     local retries=0
     while ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-              -o ConnectTimeout=1 "${REAL_USER}@${GUEST_IP}" true 2>/dev/null; do
+              -o ConnectTimeout=1 "${SSH_KEY_ARGS[@]}" "${REAL_USER}@${GUEST_IP}" true 2>/dev/null; do
         retries=$((retries + 1))
         if [ $retries -ge 60 ]; then
             echo "ERROR: SSH not available after 60s" >&2
