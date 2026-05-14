@@ -7,6 +7,27 @@ source "${SCRIPT_DIR}/config/config.sh"
 echo "Building Claude sandbox guest rootfs..."
 mkdir -p "$BUILD_DIR"
 
+# --- Fix DNS for passt (libguestfs network backend on Fedora 43+) ---
+# libguestfs on modern Fedora uses passt for VM networking. Without an
+# explicit --dns flag, passt resolves DNS via the systemd-resolved D-Bus API
+# and gets 127.0.0.53, which is unreachable from passt's context. Fix: wrap
+# the passt binary to inject --dns 8.8.8.8, and use LIBGUESTFS_BACKEND=direct
+# so libguestfs launches passt itself (inheriting our PATH) rather than via
+# virtqemud, which has its own environment and ignores our PATH changes.
+_PASST_REAL=$(command -v passt 2>/dev/null || true)
+if [ -n "$_PASST_REAL" ]; then
+    _PASST_WRAP_DIR=$(mktemp -d)
+    cat > "$_PASST_WRAP_DIR/passt" << EOF
+#!/bin/bash
+exec "$_PASST_REAL" --dns 8.8.8.8 "\$@"
+EOF
+    chmod +x "$_PASST_WRAP_DIR/passt"
+    export PATH="$_PASST_WRAP_DIR:$PATH"
+    export LIBGUESTFS_BACKEND=direct
+    trap 'rm -rf "$_PASST_WRAP_DIR"' EXIT
+    echo "  passt detected: injecting --dns 8.8.8.8 via wrapper, using direct backend."
+fi
+
 # --- Read package lists from config/packages.txt ---
 if [ ! -f "$PACKAGES_FILE" ]; then
     echo "ERROR: Packages file not found at ${PACKAGES_FILE}" >&2
@@ -53,7 +74,22 @@ VB_ARGS=(
     --format raw
     --size "$ROOTFS_SIZE"
     --root-password password:sandbox
+    --network
 )
+
+# Fail fast if networking or DNS isn't working in the build appliance.
+# virt-builder disables networking by default; --network above enables QEMU
+# SLIRP so --run-command steps can reach the internet. If this probe fails,
+# the SLIRP interface is up but DNS is broken.
+VB_ARGS+=(--run-command \
+    'getent hosts deb.debian.org >/dev/null 2>&1 || {
+        echo ""
+        echo "ERROR: DNS not working in the build environment."
+        echo "QEMU SLIRP is active but cannot resolve external hostnames."
+        echo "Check that the host has working internet connectivity."
+        echo ""
+        exit 1
+    }')
 
 # Add GitHub CLI apt repository
 VB_ARGS+=(--run-command 'mkdir -p -m 755 /etc/apt/keyrings && wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list')
