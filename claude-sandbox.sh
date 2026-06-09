@@ -42,7 +42,7 @@ cmd_status() {
 }
 
 SSH_KEY_ARGS=()
-for _key in "${REAL_HOME}/.ssh/id_ed25519" "${REAL_HOME}/.ssh/id_rsa"; do
+for _key in "${REAL_HOME}/.ssh/id_ed25519" "${REAL_HOME}/.ssh/id_rsa" "${BUILD_DIR}/sandbox_id_ed25519"; do
     [[ -f "$_key" ]] && SSH_KEY_ARGS+=(-i "$_key")
 done
 
