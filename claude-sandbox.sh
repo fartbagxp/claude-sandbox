@@ -313,7 +313,8 @@ wait_for_ssh() {
     echo "  Waiting for SSH to become available..."
     local retries=0
     while ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-              -o ConnectTimeout=1 "${SSH_KEY_ARGS[@]}" "${REAL_USER}@${GUEST_IP}" true 2>/dev/null; do
+              -o ConnectTimeout=1 -o BatchMode=yes -o PasswordAuthentication=no \
+              "${SSH_KEY_ARGS[@]}" "${REAL_USER}@${GUEST_IP}" true 2>/dev/null; do
         retries=$((retries + 1))
         if [ $retries -ge 60 ]; then
             echo "ERROR: SSH not available after 60s" >&2
@@ -343,11 +344,15 @@ cmd_reload_allowlist() {
     echo "  Flushing nftables allowed_ips set..."
     sudo nft flush set inet claude_filter allowed_ips
 
-    # SIGHUP tells dnsmasq to re-read its config files (including nftset conf)
-    # and clear its DNS cache, which forces fresh lookups that re-populate
-    # the nftset for hostnames still on the allowlist.
-    echo "  Sending SIGHUP to dnsmasq (PID: $(cat "$DNSMASQ_PIDFILE"))..."
-    sudo kill -HUP "$(cat "$DNSMASQ_PIDFILE")"
+    # Restart dnsmasq so it re-reads the conf-file with updated nftset directives.
+    # SIGHUP only re-reads /etc/hosts and resolv.conf, not conf-file= includes,
+    # so new allowlist entries would never get nftset directives until restart.
+    echo "  Restarting dnsmasq..."
+    stop_dnsmasq
+    sudo dnsmasq \
+        --conf-file="$DNSMASQ_CONF" \
+        --pid-file="$DNSMASQ_PIDFILE"
+    echo "  dnsmasq restarted (PID: $(cat "$DNSMASQ_PIDFILE"))."
 
     echo "Allowlist reloaded. New DNS queries will repopulate the firewall rules."
 }
