@@ -122,8 +122,10 @@ for key in "$REAL_HOME/.ssh/id_ed25519.pub" "$REAL_HOME/.ssh/id_rsa.pub"; do
     [[ -f "$key" ]] && SSH_PUBKEY="$key" && break
 done
 if [ -z "$SSH_PUBKEY" ]; then
-    echo "  No standard SSH key found. Generating sandbox-specific key at ${BUILD_DIR}/sandbox_id_ed25519..."
-    ssh-keygen -t ed25519 -f "${BUILD_DIR}/sandbox_id_ed25519" -N "" -C "claude-sandbox" >/dev/null
+    if [ ! -f "${BUILD_DIR}/sandbox_id_ed25519" ]; then
+        echo "  No standard SSH key found. Generating sandbox-specific key at ${BUILD_DIR}/sandbox_id_ed25519..."
+        ssh-keygen -t ed25519 -f "${BUILD_DIR}/sandbox_id_ed25519" -N "" -C "claude-sandbox" >/dev/null
+    fi
     SSH_PUBKEY="${BUILD_DIR}/sandbox_id_ed25519.pub"
 fi
 VB_ARGS+=(--ssh-inject "${GUEST_USER}:file:${SSH_PUBKEY}")
